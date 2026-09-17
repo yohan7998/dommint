@@ -86,7 +86,7 @@
 
 /* ---- menu ---- */
 /* 글자 '메뉴' 는 마크업에 남는다 — font-size:0 으로 감추기만 한다(스크린리더·테스트가 읽는 이름). */
-#deck-menu-toggle{display:inline-block;position:fixed;top:14px;right:16px;z-index:1000001;border:0;border-radius:12px;width:104px;height:44px;padding:0;background:#fff url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACwAAAAsCAYAAAAehFoBAAAArklEQVR42u3Z6w2AMAgE4O7iCo7h/uvoBKYtHHDXQOI/H59JH1DGODmu+3kjLnog/AeqoCY4C3YJzYadoqXArNhfdIOZwasBA0dDUXAX2BupYFSkgC0AFHob7P2o93kIGDGcQsDI2W59VwjYck8K2DtGy8G7S1iDG8wGpp90cssa/cYhtzVLJj9y6aVkAi9ZIpUXoXJlfp/8NFjsBPOcA225loFkU0ay7SXbWGSMD7THeeTyABZhAAAAAElFTkSuQmCC) center/auto 22px no-repeat;color:#111;font-size:0;cursor:pointer;box-shadow:0 5px 18px #0004}
+#deck-menu-toggle{display:inline-block;position:fixed;top:14px;right:16px;z-index:1000001;border:0;border-radius:12px;width:104px;height:44px;padding:0;background:#fff url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACwAAAAsCAYAAAAehFoBAAAA10lEQVR42mNgGAWjYBSMglEwCkbBKBgFo2BoA3EFi3ggnj8kHPv////4y1dv/lfVdfk/6B0Ncux/KBj0jgYlg7zipv/IYNA6GppmQQ77j83RGobu54Fy/IPOsTgcfR6IB69j0Rw9NBwLxYM7GYw6dtSxo44ddeyoY6nqWH0gfj/qWBo4lh/qIGwOXQ9NJoPasSB+PhDLD7oGuJCkznwOHtH/orIm94EO7AcljUHbteEWkJnPyMT8H9TLAeLzQMzPMApG8BhCPZ2xPKUO/k9nbD+yQngUUAgApK14A1oerSEAAAAASUVORK5CYII=) center/auto 22px no-repeat;color:#111;font-size:0;cursor:pointer;box-shadow:0 5px 18px #0004}
 #deck-menu-toggle:hover{transform:translateY(-1px)}
 #deck-menu-toggle[aria-expanded="true"]{background-color:#00b3ff;color:#071a38}
 :fullscreen #deck-menu-toggle{opacity:.25}:fullscreen #deck-menu-toggle:hover{opacity:1}
@@ -7115,7 +7115,13 @@ Deck.importer = (() => {
   const dropMine = m => { for (const k of Object.keys(m)) if (mine(k)) delete m[k]; return m; };
 
   /** 지금 화면의 덱을 이 작업장 자리에 보관한다. 슬라이드가 없으면 자리를 비운다. */
-  const keep = async () => {
+  /* **공개판은 보관하지 않는다.** 아무나 여는 주소라 개인·고객 자료가 브라우저에 남으면 안 된다
+   * — 같은 컴퓨터를 나눠 쓰면 다음 사람이 앞사람 덱을 그대로 되살린다(사용자 지적 2026-09-17).
+   * 한 번 앉아서 쓰는 동작(흡수·메모·펜·수정·지우기·내보내기)은 그대로다. 새로고침을 안 넘길 뿐이다.
+   * 보존 수단은 **내보내기 하나**다. */
+  const keep = async () => false;
+  const KEEP_DISABLED_PUBLIC = true;
+  const _keep_unused = async () => {
     const deck = document.getElementById('deck');
     if (!deck) return false;
     const id = Deck.state.DECK_ID;
@@ -7170,6 +7176,22 @@ Deck.importer = (() => {
 
   /* 재열기에 **묻는다. 자동으로 덮지 않는다** — 자동 채택은 #23(남의 덱 상태를 물려받는 것)을
    * 다시 부른다. 슬라이드가 이미 있으면 묻지 않는다. */
+  /* 끄는 것과 지우는 것은 다르다. 묻지 않게만 하면 앞사람 자료가 칸에 그대로 남아
+   * 개발자도구로 읽힌다 — 그것이 바로 걱정하신 상황이다. 부팅 때 **지우고** 시작한다.
+   * 지우는 범위: 이 도구가 쓰는 칸 전부(`dommint:*` · IndexedDB 전체). 첨부 blob 도 개인 자료다. */
+  const purgePublic = async () => {
+    let ls = 0, idb = 0;
+    try {
+      for (const k of Object.keys(localStorage)) {
+        if (k.indexOf('dommint:') === 0) { ls += (localStorage.getItem(k) || '').length; localStorage.removeItem(k); }
+      }
+    } catch (e) { /* 저장소를 못 열면 지울 것도 없다 */ }
+    try {
+      for (const r of await U.idb.all()) { idb += (r.html || '').length + (r.size || 0); await U.idb.del(r.id); }
+    } catch (e) { /* 같다 */ }
+    return { ls, idb };
+  };
+
   const offerRestore = async () => {
     if (document.querySelector('#deck > section.slide')) return;
     const rec = await kept();
@@ -7209,7 +7231,7 @@ Deck.importer = (() => {
       open(await f.text(), f.name);
     });
     emptyGuide();
-    offerRestore();            // 보관해 둔 것이 있으면 묻는다 — 자동으로 덮지 않는다
+    purgePublic();             // 공개판: 묻지 않는다. **남아 있던 것도 지우고 시작한다.**
   };
 
   /* 빈 작업장 안내. 슬라이드가 0장일 때만 보인다.
@@ -7220,8 +7242,9 @@ Deck.importer = (() => {
     const deck = document.getElementById('deck');
     const card = U.el('div', { id: 'empty-guide', 'data-ui': '', role: 'note' }, [
       U.el('b', { text: '보고서를 불러오세요' }),
-      U.el('p', { class: 'eg-logo', text: '① 오른쪽 위 로고를 눌러 HTML 열기 ↗' }),
+      U.el('p', { class: 'eg-logo', text: '① 오른쪽 위 ✎ 를 눌러 HTML 열기 ↗' }),
       U.el('p', { text: '② 또는 파일을 이 화면에 끌어다 놓기' }),
+      U.el('p', { class: 'eg-warn', text: '이 공개판은 아무것도 저장하지 않습니다 — 새로고침하면 사라집니다. 「수정본 HTML 내보내기」로 받아 두세요.' }),
     ]);
     document.body.append(card);
     /* 붙이자마자 한 번 판정한다.
@@ -7246,7 +7269,7 @@ Deck.importer = (() => {
   else document.addEventListener('deck:ready', init, { once: true });
 
   return { parse, scopeCss, stripMarks, rounds, clearRound, clearMaterials, clearDialog, assignKeys, commit, slug, init, open, overflowOf,
-           keep, kept, stranded, offerRestore };
+           keep, kept, stranded, offerRestore, purgePublic };
 })();
 
 /* ==== shell/material.js ==== */
